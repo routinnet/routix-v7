@@ -1,4 +1,3 @@
-import { useAuth } from "@/_core/hooks/useAuth";
 import { useEffect, useRef, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -20,6 +19,9 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { ModelSelector } from "@/components/ModelSelector";
+import { AdvancedSettings } from "@/components/AdvancedSettings";
+import { useAuth } from "@/_core/hooks/useAuth";
 
 interface Message {
   id: string;
@@ -45,8 +47,43 @@ export default function Dashboard() {
   const [isLoading, setIsLoading] = useState(false);
   const [conversations, setConversations] = useState<any[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
+  const [showModelSelector, setShowModelSelector] = useState(false);
+  const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
+  const [selectedModel, setSelectedModel] = useState("open-routix-v1");
+  const [generationSettings, setGenerationSettings] = useState({
+    quality: "standard" as "draft" | "standard" | "premium",
+    style: "Professional",
+    size: "1280x720",
+  });
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const aiModels = [
+    {
+      id: "open-routix-v1",
+      name: "Open Routix v1",
+      description: "Fast thumbnail generation with OpenAI DALL-E",
+      provider: "OpenAI",
+      quality: "standard" as const,
+      costPerGeneration: 1,
+    },
+    {
+      id: "open-routix-v2",
+      name: "Open Routix v2",
+      description: "High-quality face generation with realistic rendering",
+      provider: "OpenAI",
+      quality: "premium" as const,
+      costPerGeneration: 2,
+    },
+    {
+      id: "gemini-vision",
+      name: "Gemini Vision",
+      description: "Advanced vision analysis with Google Gemini",
+      provider: "Google",
+      quality: "standard" as const,
+      costPerGeneration: 1,
+    },
+  ];
 
   // Fetch conversations
   const { data: conversationsList } = trpc.conversation.list.useQuery();
@@ -245,6 +282,21 @@ export default function Dashboard() {
           </div>
 
           <div className="flex items-center gap-4">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowModelSelector(true)}
+              className="text-xs"
+            >
+              Model: {aiModels.find((m) => m.id === selectedModel)?.name}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowAdvancedSettings(true)}
+            >
+              <Settings className="w-4 h-4" />
+            </Button>
             <div className="text-right">
               <p className="text-sm font-semibold text-gray-800">{user?.name}</p>
               <div className="flex items-center gap-1 text-sm text-blue-600">
@@ -404,6 +456,35 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* Model Selector Modal */}
+      {showModelSelector && (
+        <ModelSelector
+          models={aiModels}
+          selectedModel={selectedModel}
+          onSelect={setSelectedModel}
+          onClose={() => setShowModelSelector(false)}
+        />
+      )}
+
+      {/* Advanced Settings Modal */}
+      {showAdvancedSettings && (
+        <AdvancedSettings
+          quality={generationSettings.quality}
+          style={generationSettings.style}
+          size={generationSettings.size}
+          onQualityChange={(q) =>
+            setGenerationSettings({ ...generationSettings, quality: q })
+          }
+          onStyleChange={(s) =>
+            setGenerationSettings({ ...generationSettings, style: s })
+          }
+          onSizeChange={(s) =>
+            setGenerationSettings({ ...generationSettings, size: s })
+          }
+          onClose={() => setShowAdvancedSettings(false)}
+        />
+      )}
     </div>
   );
 }
