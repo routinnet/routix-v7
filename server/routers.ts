@@ -384,7 +384,9 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        // TODO: Implement profile update in db.ts
+        // Update user profile in database
+        const { updateUserProfile } = await import("./db");
+        await updateUserProfile(ctx.user.id, input.name, input.email);
         const user = await getUser(ctx.user.id);
         return user || { id: ctx.user.id, credits: 0 };
       }),
@@ -406,18 +408,15 @@ export const appRouter = router({
 
         return { newBalance };
       }),
-
-    // Get credit history
     getCreditHistory: protectedProcedure
       .input(
         z.object({
-          limit: z.number().optional().default(20),
-          offset: z.number().optional().default(0),
+          limit: z.number().optional().default(50),
         })
       )
       .query(async ({ ctx, input }) => {
-        // TODO: Implement credit history query in db.ts
-        return [];
+        const { getCreditTransactionHistory } = await import("./db");
+        return await getCreditTransactionHistory(ctx.user.id, input.limit);
       }),
   }),
 });

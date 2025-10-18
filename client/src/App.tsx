@@ -8,6 +8,8 @@ import Home from "./pages/Home";
 import Dashboard from "./pages/Dashboard";
 import ThumbnailEditor from "./pages/ThumbnailEditor";
 import Settings from "./pages/Settings";
+import AdminDashboard from "./pages/AdminDashboard";
+import Billing from "./pages/Billing";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
@@ -17,6 +19,8 @@ function Router() {
       <Route path={"/dashboard"} component={Dashboard} />
       <Route path={"/editor/:thumbnailId"} component={ThumbnailEditor} />
       <Route path={"/settings"} component={Settings} />
+      <Route path={"/admin"} component={AdminDashboard} />
+      <Route path={"/billing"} component={Billing} />
       <Route path={"/404"} component={NotFound} />
       {/* Final fallback route */}
       <Route component={NotFound} />
