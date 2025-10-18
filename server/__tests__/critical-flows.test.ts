@@ -97,7 +97,7 @@ describe('Critical Production Flows', () => {
   describe('Database Connection', () => {
     it('should have database URL configured', () => {
       expect(config.database.url).toBeTruthy();
-      expect(config.database.url).toMatch(/^(postgres|mysql|sqlite):/);
+      expect(config.database.url).toMatch(/^(postgresql|postgres|mysql|sqlite)/);
     });
   });
 

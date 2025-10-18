@@ -169,9 +169,15 @@ export function buildOptimizedPrompt(
 
   // 6. Color palette
   if (referenceMetadata.colorPalette) {
-    const colorPalette = typeof referenceMetadata.colorPalette === 'string' 
-      ? JSON.parse(referenceMetadata.colorPalette) 
-      : referenceMetadata.colorPalette;
+    let colorPalette: any = referenceMetadata.colorPalette;
+    if (typeof colorPalette === 'string') {
+      try {
+        colorPalette = JSON.parse(colorPalette);
+      } catch {
+        // If not JSON, treat as comma-separated string
+        colorPalette = (colorPalette as string).split(',').map((c: string) => c.trim());
+      }
+    }
     if (Array.isArray(colorPalette)) {
       const colors = colorPalette.slice(0, 3).join(', ');
       parts.push(`Color palette: ${colors}`);
