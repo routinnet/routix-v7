@@ -70,6 +70,15 @@ export const appRouter = router({
 
   // Chat messages
   chat: router({
+    uploadImage: protectedProcedure
+      .input(z.object({ fileData: z.string(), fileName: z.string() }))
+      .mutation(async ({ ctx, input }) => {
+        const { uploadImageToS3 } = await import("./fileUpload");
+        const buffer = Buffer.from(input.fileData, "base64");
+        const uploaded = await uploadImageToS3(buffer, input.fileName, "image/jpeg");
+        return { success: true, url: uploaded.url, key: uploaded.key };
+      }),
+
     sendMessage: protectedProcedure
       .input(
         z.object({
@@ -108,9 +117,63 @@ export const appRouter = router({
         // Add assistant response to database
         await addChatMessage(input.conversationId, "assistant", assistantMessage);
 
+        // Generate thumbnail image
+        let thumbnail = null;
+        try {
+          const { generateImage } = await import("./_core/imageGeneration");
+          const imageResult = await generateImage({ prompt: input.message });
+          if (imageResult.url) {
+            // Create thumbnail record
+            const { createThumbnail } = await import("./db");
+            const thumbnailId = await createThumbnail(
+              ctx.user.id,
+              input.message,
+              imageResult.url
+            );
+            thumbnail = {
+              id: thumbnailId,
+              imageUrl: imageResult.url,
+              prompt: input.message,
+            };
+            // Update thumbnail status to completed
+            const { updateThumbnailStatus } = await import("./db");
+            await updateThumbnailStatus(thumbnailId, "completed", imageResult.url, 1);
+          }
+        } catch (error) {
+          console.error("[Chat] Thumbnail generation failed:", error);
+        }
+
         return {
           response: assistantMessage,
+          thumbnail,
         };
+      }),
+
+    regenerateThumbnail: protectedProcedure
+      .input(
+        z.object({
+          thumbnailId: z.string(),
+          newPrompt: z.string(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { generateImage } = await import("./_core/imageGeneration");
+        const { updateThumbnailStatus } = await import("./db");
+
+        try {
+          const imageResult = await generateImage({ prompt: input.newPrompt });
+          if (imageResult.url) {
+            await updateThumbnailStatus(input.thumbnailId, "completed", imageResult.url, 1);
+            return {
+              success: true,
+              imageUrl: imageResult.url,
+              prompt: input.newPrompt,
+            };
+          }
+        } catch (error) {
+          console.error("[Chat] Regeneration failed:", error);
+          throw new Error("Failed to regenerate thumbnail");
+        }
       }),
 
     getHistory: protectedProcedure
@@ -154,6 +217,35 @@ export const appRouter = router({
 
   // Thumbnail generation
   thumbnail: router({
+    downloadThumbnail: protectedProcedure
+      .input(z.object({ thumbnailId: z.string() }))
+      .query(async ({ ctx, input }) => {
+        const { getUserThumbnails } = await import("./db");
+        const thumbnails = await getUserThumbnails(ctx.user.id);
+        const thumbnail = thumbnails.find((t: any) => t.id === input.thumbnailId);
+        if (!thumbnail || thumbnail.userId !== ctx.user.id) {
+          throw new Error("Thumbnail not found");
+        }
+        return {
+          imageUrl: thumbnail.imageUrl,
+          prompt: thumbnail.prompt,
+          fileName: `thumbnail-${thumbnail.id}.png`,
+        };
+      }),
+
+    shareThumbnail: protectedProcedure
+      .input(z.object({ thumbnailId: z.string() }))
+      .mutation(async ({ ctx, input }) => {
+        const { getUserThumbnails } = await import("./db");
+        const thumbnails = await getUserThumbnails(ctx.user.id);
+        const thumbnail = thumbnails.find((t: any) => t.id === input.thumbnailId);
+        if (!thumbnail || thumbnail.userId !== ctx.user.id) {
+          throw new Error("Thumbnail not found");
+        }
+        const shareUrl = `${process.env.VITE_APP_URL || "https://routix.app"}/share/${input.thumbnailId}`;
+        return { shareUrl, thumbnail };
+      }),
+
     generate: protectedProcedure
       .input(
         z.object({
