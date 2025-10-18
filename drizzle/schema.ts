@@ -157,3 +157,96 @@ export const creditTransactions = mysqlTable("creditTransactions", {
 export type CreditTransaction = typeof creditTransactions.$inferSelect;
 export type InsertCreditTransaction = typeof creditTransactions.$inferInsert;
 
+
+
+// ===== REFERENCE THUMBNAIL SYSTEM =====
+
+// Reference Thumbnails - Secret database of high-quality viral thumbnails
+export const referenceThumbnails = mysqlTable("referenceThumbnails", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description"),
+  imageUrl: varchar("imageUrl", { length: 512 }).notNull(), // S3 URL to the thumbnail image
+  category: varchar("category", { length: 100 }).notNull(), // e.g., "gaming", "tech", "lifestyle", "education"
+  style: varchar("style", { length: 100 }), // e.g., "dramatic", "minimalist", "colorful"
+  viralScore: decimal("viralScore", { precision: 3, scale: 2 }).default("0"), // 0-1 score indicating viral potential
+  isActive: boolean("isActive").default(true),
+  createdAt: timestamp("createdAt").defaultNow(),
+  updatedAt: timestamp("updatedAt").defaultNow(),
+});
+
+export type ReferenceThumbnail = typeof referenceThumbnails.$inferSelect;
+export type InsertReferenceThumbnail = typeof referenceThumbnails.$inferInsert;
+
+// Thumbnail Metadata - Extracted structural and compositional data
+export const thumbnailMetadata = mysqlTable("thumbnailMetadata", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  referenceThumbnailId: varchar("referenceThumbnailId", { length: 64 }).notNull(),
+  // Compositional elements
+  subjectPosition: varchar("subjectPosition", { length: 50 }), // e.g., "left", "center", "right"
+  textPosition: varchar("textPosition", { length: 50 }), // e.g., "top", "bottom", "overlay"
+  textAlignment: varchar("textAlignment", { length: 50 }), // e.g., "left", "center", "right"
+  // Visual characteristics
+  colorPalette: text("colorPalette"), // JSON array of dominant colors
+  lighting: varchar("lighting", { length: 100 }), // e.g., "dramatic", "soft", "bright"
+  contrast: varchar("contrast", { length: 50 }), // e.g., "high", "medium", "low"
+  // Emotional/stylistic elements
+  mood: varchar("mood", { length: 100 }), // e.g., "shocked", "excited", "curious"
+  emotionalExpression: varchar("emotionalExpression", { length: 100 }), // e.g., "surprised", "happy", "confused"
+  // Composition details
+  hasText: boolean("hasText").default(false),
+  textStyle: varchar("textStyle", { length: 100 }), // e.g., "bold", "outline", "shadow"
+  hasFace: boolean("hasFace").default(false),
+  faceExpression: varchar("faceExpression", { length: 100 }), // e.g., "shocked", "happy"
+  hasProduct: boolean("hasProduct").default(false),
+  // Advanced properties
+  layerCount: int("layerCount").default(1), // Number of distinct visual layers
+  symmetry: varchar("symmetry", { length: 50 }), // e.g., "symmetric", "asymmetric"
+  depthOfField: varchar("depthOfField", { length: 50 }), // e.g., "shallow", "deep"
+  // Metadata
+  extractedPrompt: text("extractedPrompt"), // AI-generated description for DALL-E
+  confidence: decimal("confidence", { precision: 3, scale: 2 }).default("0.95"), // Confidence score of extraction
+  createdAt: timestamp("createdAt").defaultNow(),
+  updatedAt: timestamp("updatedAt").defaultNow(),
+});
+
+export type ThumbnailMetadata = typeof thumbnailMetadata.$inferSelect;
+export type InsertThumbnailMetadata = typeof thumbnailMetadata.$inferInsert;
+
+// Generation History - Track which reference thumbnails were used for generation
+export const generationHistory = mysqlTable("generationHistory", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  userId: varchar("userId", { length: 64 }).notNull(),
+  referenceThumbnailId: varchar("referenceThumbnailId", { length: 64 }).notNull(),
+  userPrompt: text("userPrompt").notNull(), // Original user request
+  generatedImageUrl: varchar("generatedImageUrl", { length: 512 }), // S3 URL to generated image
+  generatedPrompt: text("generatedPrompt"), // Final prompt sent to DALL-E
+  model: varchar("model", { length: 50 }).default("dall-e-3"), // Which AI model was used
+  creditsUsed: int("creditsUsed").notNull(),
+  status: mysqlEnum("status", ["pending", "generating", "completed", "failed"]).default("pending"),
+  errorMessage: text("errorMessage"), // If generation failed
+  qualityScore: decimal("qualityScore", { precision: 3, scale: 2 }), // Post-generation quality assessment
+  userRating: int("userRating"), // 1-5 star rating from user
+  createdAt: timestamp("createdAt").defaultNow(),
+  updatedAt: timestamp("updatedAt").defaultNow(),
+});
+
+export type GenerationHistory = typeof generationHistory.$inferSelect;
+export type InsertGenerationHistory = typeof generationHistory.$inferInsert;
+
+// Topic Preferences - Map user topics to best-matching reference thumbnails
+export const topicPreferences = mysqlTable("topicPreferences", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  topic: varchar("topic", { length: 255 }).notNull().unique(), // e.g., "gaming", "crypto", "fitness"
+  bestMatchingReferenceThumbnailIds: text("bestMatchingReferenceThumbnailIds"), // JSON array of top 5 reference IDs
+  stylePreferences: text("stylePreferences"), // JSON object with style weights
+  colorPreferences: text("colorPreferences"), // JSON object with color preferences
+  usageCount: int("usageCount").default(0), // How many times this topic has been used
+  successRate: decimal("successRate", { precision: 3, scale: 2 }).default("0.5"), // Average success rate
+  createdAt: timestamp("createdAt").defaultNow(),
+  updatedAt: timestamp("updatedAt").defaultNow(),
+});
+
+export type TopicPreference = typeof topicPreferences.$inferSelect;
+export type InsertTopicPreference = typeof topicPreferences.$inferInsert;
+
