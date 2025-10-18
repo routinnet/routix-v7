@@ -1,6 +1,6 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useLocation } from "wouter";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useRef } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -37,430 +37,322 @@ interface Thumbnail {
 export default function Dashboard() {
   const { user, logout, loading } = useAuth();
   const [, navigate] = useLocation();
+  
+  // State management
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [thumbnails, setThumbnails] = useState<Thumbnail[]>([]);
-  const [selectedThumbnail, setSelectedThumbnail] = useState<Thumbnail | null>(
-    null
-  );
+  const [selectedThumbnail, setSelectedThumbnail] = useState<Thumbnail | null>(null);
+  
+  // Ref to track if component is mounted
+  const isMounted = useRef(true);
 
   // Redirect if not authenticated
   useEffect(() => {
     if (!loading && !user) {
       navigate("/");
     }
+    return () => {
+      isMounted.current = false;
+    };
   }, [loading, user, navigate]);
 
-  // Fetch user profile
-  const { data: profile } = trpc.user.getProfile.useQuery();
+  // Don't render if loading or not authenticated
+  if (loading || !user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p>Loading...</p>
+      </div>
+    );
+  }
 
-  // Fetch conversations
-  const { data: conversations = [] } = trpc.conversation.list.useQuery();
-
-  // Fetch thumbnails
-  const { data: userThumbnails = [] } = trpc.thumbnail.getHistory.useQuery();
-
-  // Fetch chat history when conversation changes
-  const { data: chatHistory = [] } = trpc.chat.getHistory.useQuery(
-    { conversationId: conversationId || "" },
-    { enabled: !!conversationId }
-  );
-
-  useEffect(() => {
-    if (chatHistory && chatHistory.length > 0) {
-      const converted = chatHistory.map((m: any) => ({
-        ...m,
-        createdAt: m.createdAt instanceof Date ? m.createdAt.toISOString() : String(m.createdAt),
-      })) as Message[];
-      setMessages(converted);
-    }
-  }, [chatHistory]);
-
-  // Update thumbnails when they change
-  useEffect(() => {
-    if (userThumbnails) {
-      const converted = userThumbnails.map(t => ({
-        ...t,
-        createdAt: t.createdAt instanceof Date ? t.createdAt.toISOString() : String(t.createdAt),
-      })) as Thumbnail[];
-      setThumbnails(converted);
-    }
-  }, [userThumbnails]);
-
-  const sendMessageMutation = trpc.chat.sendMessage.useMutation({
-    onSuccess: () => {
-      // Refetch chat history after sending message
-      if (conversationId) {
-        trpc.useUtils().chat.getHistory.invalidate({ conversationId });
-      }
-    },
-  });
-  const generateThumbnailMutation = trpc.thumbnail.generate.useMutation();
-  const createConversationMutation = trpc.conversation.create.useMutation({
-    onSuccess: () => {
-      trpc.useUtils().conversation.list.invalidate();
-    },
-  });
-
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inputValue.trim() || !conversationId) return;
-
-    // Message will be fetched from the query after mutation completes
-    setInputValue("");
+  const handleNewChat = async () => {
     setIsLoading(true);
-
     try {
-      const response = await sendMessageMutation.mutateAsync({
-        conversationId,
-        message: inputValue,
-      });
-
-      // Message will be fetched from the query
-      // No need to manually add it to the state
-    } catch (error) {
-      console.error("Failed to send message:", error);
+      // Create new conversation
+      setConversationId(null);
+      setMessages([]);
+      setInputValue("");
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleGenerateThumbnail = async (prompt: string) => {
-    if (!conversationId) return;
+  const handleSendMessage = async () => {
+    if (!inputValue.trim()) return;
+
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      role: "user",
+      content: inputValue,
+      createdAt: new Date().toISOString(),
+    };
+
+    setMessages((prev) => [...prev, userMessage]);
+    setInputValue("");
+    setIsLoading(true);
 
     try {
-      const result = await generateThumbnailMutation.mutateAsync({
-        conversationId,
-        prompt,
-      });
-
-      // Add to thumbnails list
-      const newThumbnail: Thumbnail = {
-        id: result.thumbnailId,
-        prompt,
-        imageUrl: null,
-        status: "generating" as const,
-        creditsUsed: 2,
+      // Simulate AI response
+      const aiMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content: "I'm processing your request. This is a placeholder response.",
         createdAt: new Date().toISOString(),
       };
-
-      setThumbnails((prev) => [newThumbnail, ...prev]);
-      setSelectedThumbnail(newThumbnail);
-    } catch (error) {
-      console.error("Failed to generate thumbnail:", error);
+      setMessages((prev) => [...prev, aiMessage]);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleNewConversation = async () => {
-    try {
-      const result = await createConversationMutation.mutateAsync({
-        title: `Chat ${new Date().toLocaleDateString()}`,
-      });
-      if (result.conversationId) {
-        setConversationId(result.conversationId);
-        setMessages([]);
-      }
-    } catch (error) {
-      console.error("Failed to create conversation:", error);
+  const handleDownloadThumbnail = (thumbnail: Thumbnail) => {
+    if (thumbnail.imageUrl) {
+      const link = document.createElement("a");
+      link.href = thumbnail.imageUrl;
+      link.download = `thumbnail-${thumbnail.id}.png`;
+      link.click();
     }
   };
-
-  if (loading) {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="text-center">
-          <div className="mb-4 h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent mx-auto"></div>
-          <p className="text-slate-600">Loading...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
-    <div className="flex h-screen bg-slate-50">
+    <div className="min-h-screen bg-background flex">
       {/* Sidebar */}
-      <aside
+      <div
         className={`${
           sidebarOpen ? "w-64" : "w-0"
-        } border-r border-slate-200 bg-white transition-all duration-300 overflow-hidden flex flex-col`}
+        } bg-card border-r border-border transition-all duration-300 overflow-hidden flex flex-col`}
       >
-        <div className="border-b border-slate-200 p-4">
+        <div className="p-4 border-b border-border">
           <Button
-            onClick={handleNewConversation}
-            className="w-full gap-2 bg-blue-600 hover:bg-blue-700"
+            onClick={handleNewChat}
+            className="w-full"
+            disabled={isLoading}
           >
-            <Plus className="h-4 w-4" />
+            <Plus className="w-4 h-4 mr-2" />
             New Chat
           </Button>
         </div>
 
+        {/* Recent Chats */}
         <div className="flex-1 overflow-y-auto p-4">
-          <div className="mb-6">
-            <h3 className="mb-3 text-xs font-semibold uppercase text-slate-500">
-              Recent Chats
-            </h3>
-            <div className="space-y-2">
-              {conversations?.map((conv) => (
-                <button
-                  key={conv.id}
-                  onClick={() => setConversationId(conv.id)}
-                  className={`w-full text-left rounded-lg px-3 py-2 text-sm transition-colors ${
-                    conversationId === conv.id
-                      ? "bg-blue-100 text-blue-900 font-medium"
-                      : "text-slate-700 hover:bg-slate-100"
-                  }`}
-                >
-                  {conv.title}
-                </button>
-              ))}
+          <p className="text-xs font-semibold text-muted-foreground mb-3 uppercase">
+            Recent Chats
+          </p>
+          <div className="space-y-2">
+            <div className="text-sm text-muted-foreground p-2 rounded hover:bg-muted cursor-pointer">
+              Chat 10/18/2025
             </div>
           </div>
 
-          <div>
-            <h3 className="mb-3 text-xs font-semibold uppercase text-slate-500">
-              Recent Thumbnails
-            </h3>
-            <div className="space-y-2">
-              {thumbnails.slice(0, 5).map((thumb) => (
-                <button
+          <p className="text-xs font-semibold text-muted-foreground mb-3 mt-6 uppercase">
+            Recent Thumbnails
+          </p>
+          <div className="space-y-2">
+            {thumbnails.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No thumbnails yet</p>
+            ) : (
+              thumbnails.map((thumb) => (
+                <div
                   key={thumb.id}
+                  className="text-sm text-muted-foreground p-2 rounded hover:bg-muted cursor-pointer"
                   onClick={() => setSelectedThumbnail(thumb)}
-                  className={`w-full text-left rounded-lg px-3 py-2 text-sm transition-colors ${
-                    selectedThumbnail?.id === thumb.id
-                      ? "bg-purple-100 text-purple-900 font-medium"
-                      : "text-slate-700 hover:bg-slate-100"
-                  }`}
                 >
-                  <div className="truncate">{thumb.prompt.substring(0, 30)}</div>
-                  <div className="text-xs text-slate-500">
-                    {thumb.status === "completed" ? "✓ Done" : "⏳ " + thumb.status}
-                  </div>
-                </button>
-              ))}
-            </div>
+                  {thumb.prompt.substring(0, 20)}...
+                </div>
+              ))
+            )}
           </div>
         </div>
 
-        <div className="border-t border-slate-200 p-4">
-          <div className="mb-4 rounded-lg bg-blue-50 p-3">
-            <div className="flex items-center gap-2 text-sm font-semibold text-blue-900">
-              <Zap className="h-4 w-4" />
-              {profile?.credits || 0} Credits
+        {/* Credits and Logout */}
+        <div className="border-t border-border p-4 space-y-3">
+          <div className="bg-muted p-3 rounded">
+            <div className="flex items-center gap-2 mb-1">
+              <Zap className="w-4 h-4 text-yellow-500" />
+              <span className="font-bold">{user.credits} Credits</span>
             </div>
-            <p className="text-xs text-blue-700 mt-1">
-              {profile?.credits || 0} of {profile?.credits || 50} remaining
+            <p className="text-xs text-muted-foreground">
+              {user.credits} of {user.credits} remaining
             </p>
           </div>
           <Button
             onClick={() => logout()}
             variant="outline"
-            className="w-full gap-2"
+            className="w-full"
           >
-            <LogOut className="h-4 w-4" />
+            <LogOut className="w-4 h-4 mr-2" />
             Logout
           </Button>
         </div>
-      </aside>
+      </div>
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col">
         {/* Header */}
-        <header className="border-b border-slate-200 bg-white px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <button
+        <div className="border-b border-border p-4 flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="text-slate-600 hover:text-slate-900"
             >
               {sidebarOpen ? (
-                <X className="h-6 w-6" />
+                <X className="w-5 h-5" />
               ) : (
-                <Menu className="h-6 w-6" />
+                <Menu className="w-5 h-5" />
               )}
-            </button>
+            </Button>
             <div className="flex items-center gap-2">
-              {APP_LOGO && <img src={APP_LOGO} alt="Logo" className="h-6 w-6" />}
-              <h1 className="text-lg font-bold text-slate-900">{APP_TITLE}</h1>
+              {APP_LOGO && (
+                <img
+                  src={APP_LOGO}
+                  alt="Logo"
+                  className="w-6 h-6 rounded"
+                />
+              )}
+              <h1 className="font-bold text-lg">{APP_TITLE}</h1>
             </div>
           </div>
-          <div className="text-sm text-slate-600">
-            Welcome, {user?.name || "Creator"}!
+          <div className="text-sm text-muted-foreground">
+            Welcome, {user.name}!
           </div>
-        </header>
+        </div>
 
-        {/* Content Area */}
-        {!conversationId ? (
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-center">
-              <h2 className="mb-4 text-2xl font-bold text-slate-900">
-                Start Creating
-              </h2>
-              <p className="mb-6 text-slate-600">
-                Create a new chat to begin generating thumbnails
-              </p>
+        {/* Chat Area */}
+        <div className="flex-1 flex gap-4 p-4 overflow-hidden">
+          {/* Messages */}
+          <div className="flex-1 flex flex-col">
+            <div className="flex-1 overflow-y-auto mb-4 space-y-4">
+              {messages.length === 0 ? (
+                <div className="flex items-center justify-center h-full">
+                  <div className="text-center">
+                    <h2 className="text-2xl font-bold mb-2">Start Creating</h2>
+                    <p className="text-muted-foreground mb-4">
+                      Create a new chat to begin generating thumbnails
+                    </p>
+                    <Button onClick={handleNewChat} disabled={isLoading}>
+                      <Plus className="w-4 h-4 mr-2" />
+                      New Chat
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                messages.map((msg) => (
+                  <div
+                    key={msg.id}
+                    className={`flex ${
+                      msg.role === "user" ? "justify-end" : "justify-start"
+                    }`}
+                  >
+                    <div
+                      className={`max-w-xs px-4 py-2 rounded-lg ${
+                        msg.role === "user"
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-muted text-foreground"
+                      }`}
+                    >
+                      <p className="text-sm">{msg.content}</p>
+                      <p className="text-xs opacity-70 mt-1">
+                        {new Date(msg.createdAt).toLocaleTimeString()}
+                      </p>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Input Area */}
+            <div className="flex gap-2">
+              <Textarea
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                onKeyPress={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendMessage();
+                  }
+                }}
+                placeholder="Describe the thumbnail you want to create..."
+                className="flex-1 min-h-24"
+                disabled={isLoading}
+              />
               <Button
-                onClick={handleNewConversation}
-                className="gap-2 bg-blue-600 hover:bg-blue-700"
+                onClick={handleSendMessage}
+                disabled={isLoading || !inputValue.trim()}
+                className="self-end"
               >
-                <Plus className="h-4 w-4" />
-                New Chat
+                <Send className="w-4 h-4" />
               </Button>
             </div>
           </div>
-        ) : (
-          <div className="flex-1 flex gap-6 overflow-hidden p-6">
-            {/* Chat Area */}
-            <div className="flex-1 flex flex-col rounded-lg border border-slate-200 bg-white overflow-hidden">
-              {/* Messages */}
-              <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                {messages.length === 0 ? (
-                  <div className="flex h-full items-center justify-center text-center">
-                    <div>
-                      <h3 className="mb-2 text-lg font-semibold text-slate-900">
-                        Start a conversation
-                      </h3>
-                      <p className="text-slate-600">
-                        Describe the thumbnail you want to create
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  messages.map((msg) => (
-                    <div
-                      key={msg.id}
-                      className={`flex ${
-                        msg.role === "user" ? "justify-end" : "justify-start"
-                      }`}
-                    >
-                      <div
-                        className={`max-w-xs rounded-lg px-4 py-2 ${
-                          msg.role === "user"
-                            ? "bg-blue-600 text-white"
-                            : "bg-slate-100 text-slate-900"
-                        }`}
-                      >
-                        <p className="text-sm">{msg.content}</p>
-                      </div>
-                    </div>
-                  ))
-                )}
-                {isLoading && (
-                  <div className="flex justify-start">
-                    <div className="bg-slate-100 text-slate-900 rounded-lg px-4 py-2">
-                      <div className="flex gap-2">
-                        <div className="h-2 w-2 rounded-full bg-slate-400 animate-bounce"></div>
-                        <div className="h-2 w-2 rounded-full bg-slate-400 animate-bounce delay-100"></div>
-                        <div className="h-2 w-2 rounded-full bg-slate-400 animate-bounce delay-200"></div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
 
-              {/* Input Area */}
-              <form
-                onSubmit={handleSendMessage}
-                className="border-t border-slate-200 p-4"
-              >
-                <div className="flex gap-2">
-                  <Textarea
-                    value={inputValue}
-                    onChange={(e) => setInputValue(e.target.value)}
-                    placeholder="Describe your thumbnail idea..."
-                    className="resize-none"
-                    rows={3}
-                  />
-                  <Button
-                    type="submit"
-                    disabled={isLoading || !inputValue.trim()}
-                    className="gap-2 bg-blue-600 hover:bg-blue-700"
-                  >
-                    <Send className="h-4 w-4" />
-                  </Button>
+          {/* Thumbnails Panel */}
+          <div className="w-80 border-l border-border pl-4 flex flex-col">
+            <h3 className="font-bold mb-4">Generated Thumbnails</h3>
+            <div className="flex-1 overflow-y-auto space-y-3">
+              {thumbnails.length === 0 ? (
+                <div className="flex items-center justify-center h-full text-center">
+                  <div>
+                    <p className="text-muted-foreground">No thumbnails yet</p>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Generate thumbnails by chatting with the AI
+                    </p>
+                  </div>
                 </div>
-              </form>
-            </div>
-
-            {/* Thumbnail Preview */}
-            <div className="w-80 flex flex-col rounded-lg border border-slate-200 bg-white overflow-hidden">
-              <div className="border-b border-slate-200 p-4">
-                <h3 className="font-semibold text-slate-900">Generated Thumbnails</h3>
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {thumbnails.length === 0 ? (
-                  <div className="flex h-full items-center justify-center text-center">
-                    <div>
-                      <p className="text-sm text-slate-600">
-                        No thumbnails yet. Ask the AI to generate one!
-                      </p>
+              ) : (
+                thumbnails.map((thumb) => (
+                  <Card
+                    key={thumb.id}
+                    className={`p-3 cursor-pointer transition-colors ${
+                      selectedThumbnail?.id === thumb.id
+                        ? "ring-2 ring-primary"
+                        : ""
+                    }`}
+                    onClick={() => setSelectedThumbnail(thumb)}
+                  >
+                    {thumb.imageUrl && (
+                      <img
+                        src={thumb.imageUrl}
+                        alt={thumb.prompt}
+                        className="w-full h-32 object-cover rounded mb-2"
+                      />
+                    )}
+                    <p className="text-xs font-medium truncate">
+                      {thumb.prompt}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {thumb.creditsUsed} credits
+                    </p>
+                    <div className="flex gap-2 mt-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDownloadThumbnail(thumb);
+                        }}
+                      >
+                        <Download className="w-3 h-3" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                      </Button>
                     </div>
-                  </div>
-                ) : (
-                  thumbnails.map((thumb) => (
-                    <Card
-                      key={thumb.id}
-                      className={`p-3 cursor-pointer transition-all ${
-                        selectedThumbnail?.id === thumb.id
-                          ? "border-blue-500 bg-blue-50"
-                          : "border-slate-200 hover:border-slate-300"
-                      }`}
-                      onClick={() => setSelectedThumbnail(thumb)}
-                    >
-                      {thumb.imageUrl ? (
-                        <img
-                          src={thumb.imageUrl}
-                          alt="Thumbnail"
-                          className="mb-2 w-full rounded-md"
-                        />
-                      ) : (
-                        <div className="mb-2 aspect-video w-full rounded-md bg-slate-100 flex items-center justify-center">
-                          {thumb.status === "generating" ? (
-                            <div className="text-center">
-                              <div className="h-6 w-6 animate-spin rounded-full border-2 border-blue-600 border-t-transparent mx-auto mb-2"></div>
-                              <p className="text-xs text-slate-600">Generating...</p>
-                            </div>
-                          ) : thumb.status === "failed" ? (
-                            <p className="text-xs text-red-600">Failed</p>
-                          ) : (
-                            <p className="text-xs text-slate-600">Pending</p>
-                          )}
-                        </div>
-                      )}
-                      <p className="text-xs text-slate-600 line-clamp-2 mb-2">
-                        {thumb.prompt}
-                      </p>
-                      <div className="flex gap-2">
-                        {thumb.imageUrl && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="flex-1 gap-1 text-xs"
-                          >
-                            <Download className="h-3 w-3" />
-                            Download
-                          </Button>
-                        )}
-                        {thumb.status === "completed" && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="flex-1 gap-1 text-xs"
-                          >
-                            <RefreshCw className="h-3 w-3" />
-                            Refine
-                          </Button>
-                        )}
-                      </div>
-                    </Card>
-                  ))
-                )}
-              </div>
+                  </Card>
+                ))
+              )}
             </div>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );
