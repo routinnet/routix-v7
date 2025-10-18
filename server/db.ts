@@ -1,5 +1,5 @@
-import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
+import { eq, desc } from "drizzle-orm";
 import {
   InsertUser,
   users,
@@ -254,5 +254,126 @@ export async function recordCreditTransaction(
     type,
     description,
   });
+}
+
+// Additional user queries
+export async function updateUserProfile(
+  userId: string,
+  name?: string,
+  email?: string
+): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const updateData: any = {};
+  if (name !== undefined) updateData.name = name;
+  if (email !== undefined) updateData.email = email;
+
+  if (Object.keys(updateData).length === 0) return;
+
+  await db.update(users).set(updateData).where(eq(users.id, userId));
+}
+
+export async function getUserCredits(userId: string): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+
+  const user = await db
+    .select({ credits: users.credits })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  return user.length > 0 ? user[0].credits : 0;
+}
+
+export async function getCreditTransactionHistory(
+  userId: string,
+  limit: number = 50
+) {
+  const db = await getDb();
+  if (!db) return [];
+
+  return db
+    .select()
+    .from(creditTransactions)
+    .where(eq(creditTransactions.userId, userId))
+    .orderBy(desc(creditTransactions.createdAt))
+    .limit(limit);
+}
+
+// Conversation soft delete
+export async function deleteConversation(conversationId: string): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // For now, we'll just delete associated messages and the conversation
+  // In production, implement soft delete with an 'archived' flag
+  await db
+    .delete(chatMessages)
+    .where(eq(chatMessages.conversationId, conversationId));
+
+  await db
+    .delete(conversations)
+    .where(eq(conversations.id, conversationId));
+}
+
+// Thumbnail soft delete
+export async function deleteThumbnail(thumbnailId: string): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // For now, we'll just delete the thumbnail
+  // In production, implement soft delete with a 'deleted' flag
+  await db.delete(thumbnails).where(eq(thumbnails.id, thumbnailId));
+}
+
+// Get user by email
+export async function getUserByEmail(email: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+
+  const result = await db
+    .select()
+    .from(users)
+    .where(eq(users.email, email))
+    .limit(1);
+
+  return result.length > 0 ? result[0] : undefined;
+}
+
+// Get all users (for admin)
+export async function getAllUsers(limit: number = 50, offset: number = 0) {
+  const db = await getDb();
+  if (!db) return [];
+
+  return db
+    .select()
+    .from(users)
+    .limit(limit)
+    .offset(offset);
+}
+
+// Get user count (for admin)
+export async function getUserCount(): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+
+  const result = await db
+    .select({ count: users.id })
+    .from(users);
+
+  return result.length;
+}
+
+// Update user role
+export async function updateUserRole(
+  userId: string,
+  role: "user" | "admin"
+): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.update(users).set({ role }).where(eq(users.id, userId));
 }
 
