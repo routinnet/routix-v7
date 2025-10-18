@@ -1,5 +1,5 @@
 import { drizzle } from "drizzle-orm/mysql2";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and, like } from "drizzle-orm";
 import {
   InsertUser,
   users,
@@ -300,6 +300,26 @@ export async function getCreditTransactionHistory(
     .where(eq(creditTransactions.userId, userId))
     .orderBy(desc(creditTransactions.createdAt))
     .limit(limit);
+}
+
+// Conversation search
+export async function searchConversations(
+  userId: string,
+  query: string
+): Promise<any[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  return db
+    .select()
+    .from(conversations)
+    .where(
+      and(
+        eq(conversations.userId, userId),
+        like(conversations.title, `%${query}%`)
+      )
+    )
+    .orderBy(desc(conversations.createdAt));
 }
 
 // Conversation soft delete

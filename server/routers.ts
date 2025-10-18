@@ -41,6 +41,13 @@ export const appRouter = router({
 
   // Conversation management
   conversation: router({
+    search: protectedProcedure
+      .input(z.object({ query: z.string() }))
+      .query(async ({ ctx, input }) => {
+        const { searchConversations } = await import("./db");
+        return await searchConversations(ctx.user.id, input.query);
+      }),
+
     create: protectedProcedure
       .input(z.object({ title: z.string() }))
       .mutation(async ({ ctx, input }) => {
@@ -372,6 +379,36 @@ export const appRouter = router({
 
   // User profile and credits
   user: router({
+    sendWelcomeEmail: protectedProcedure.mutation(async ({ ctx }) => {
+      const { sendEmail, getWelcomeEmailTemplate } = await import("./email");
+      const template = getWelcomeEmailTemplate(ctx.user.name || "User");
+      const sent = await sendEmail({
+        to: ctx.user.email || "",
+        subject: template.subject,
+        html: template.html,
+        text: template.text,
+      });
+      return { success: sent };
+    }),
+
+    sendCreditsPurchasedEmail: protectedProcedure
+      .input(z.object({ creditsAdded: z.number(), newBalance: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const { sendEmail, getCreditsPurchasedEmailTemplate } = await import("./email");
+        const template = getCreditsPurchasedEmailTemplate(
+          ctx.user.name || "User",
+          input.creditsAdded,
+          input.newBalance
+        );
+        const sent = await sendEmail({
+          to: ctx.user.email || "",
+          subject: template.subject,
+          html: template.html,
+          text: template.text,
+        });
+        return { success: sent };
+      }),
+
     getProfile: protectedProcedure.query(async ({ ctx }) => {
       return await getUser(ctx.user.id);
     }),

@@ -1,10 +1,11 @@
 import { z } from "zod";
-import { protectedProcedure, router } from "./_core/trpc";
+import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import {
   getUser,
   updateUserCredits,
   recordCreditTransaction,
 } from "./db";
+import { handleStripeWebhook } from "./webhooks";
 
 /**
  * Payment and Subscription Router
@@ -59,6 +60,21 @@ export const subscriptionPlans = {
 };
 
 export const paymentRouter = router({
+  // Handle Stripe webhook
+  handleWebhook: publicProcedure
+    .input(z.object({
+      event: z.any(),
+    }))
+    .mutation(async ({ input }) => {
+      try {
+        await handleStripeWebhook(input.event);
+        return { success: true };
+      } catch (error) {
+        console.error("Webhook processing error:", error);
+        return { success: false, error: "Webhook processing failed" };
+      }
+    }),
+
   // Get available credit packages
   getCreditPackages: protectedProcedure.query(async () => {
     return Object.values(creditPackages);
