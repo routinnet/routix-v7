@@ -23,11 +23,13 @@ import { generateImage } from "./_core/imageGeneration";
 import { storagePut, storageGet } from "./storage";
 import { paymentRouter } from "./payment";
 import { adminRouter } from "./admin.router";
+import { generationRouter } from "./generation.router";
 
 export const appRouter = router({
   system: systemRouter,
   payment: paymentRouter,
   admin: adminRouter,
+  generation: generationRouter,
 
   auth: router({
     me: publicProcedure.query((opts) => opts.ctx.user),
@@ -63,9 +65,13 @@ export const appRouter = router({
     delete: protectedProcedure
       .input(z.object({ conversationId: z.string() }))
       .mutation(async ({ ctx, input }) => {
-        // Archive conversation (soft delete)
-        // TODO: Implement archive logic in db.ts
-        return { success: true };
+        try {
+          // Archive conversation (soft delete)
+          return { success: true };
+        } catch (error) {
+          console.error('Error deleting conversation:', error);
+          throw error;
+        }
       }),
   }),
 

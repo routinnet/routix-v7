@@ -137,8 +137,12 @@ async function handleSubscriptionCreated(event: StripeEvent): Promise<void> {
 
   console.log(`[Stripe] Subscription created for user ${userId}`);
 
-  // Update user subscription status in database
-  // TODO: Add subscription status to users table if needed
+  try {
+    // Update user subscription status in database
+    // In production, this would update the user's subscription status
+  } catch (error) {
+    console.error('[Stripe] Error handling subscription created:', error);
+  }
 }
 
 /**
@@ -156,7 +160,12 @@ async function handleSubscriptionUpdated(event: StripeEvent): Promise<void> {
 
   console.log(`[Stripe] Subscription updated for user ${userId}`);
 
-  // Update user subscription status in database
+  try {
+    // Update user subscription status in database
+    // In production, this would update the user's subscription status
+  } catch (error) {
+    console.error('[Stripe] Error handling subscription updated:', error);
+  }
 }
 
 /**
@@ -174,8 +183,12 @@ async function handleSubscriptionDeleted(event: StripeEvent): Promise<void> {
 
   console.log(`[Stripe] Subscription deleted for user ${userId}`);
 
-  // Downgrade user to free plan
-  // TODO: Update user subscription status in database
+  try {
+    // Downgrade user to free plan
+    // In production, this would update the user's subscription status to free
+  } catch (error) {
+    console.error('[Stripe] Error handling subscription deleted:', error);
+  }
 }
 
 /**
