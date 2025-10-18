@@ -1,0 +1,353 @@
+import { z } from "zod";
+import { protectedProcedure, router } from "./_core/trpc";
+import { getUser } from "./db";
+
+/**
+ * Admin Router
+ * Handles admin-only operations like user management and analytics
+ */
+
+// Admin-only procedure
+const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
+  const user = await getUser(ctx.user.id);
+  if (user?.role !== "admin") {
+    throw new Error("Unauthorized: Admin access required");
+  }
+  return next();
+});
+
+export const adminRouter = router({
+  // Dashboard stats
+  getDashboardStats: adminProcedure.query(async () => {
+    // TODO: Implement actual stats queries
+    return {
+      totalUsers: 1250,
+      activeUsers: 450,
+      totalCreditsGenerated: 125000,
+      totalCreditsUsed: 98500,
+      totalRevenue: 12450.5,
+      averageUserValue: 9.96,
+      thumbnailsGenerated: 5420,
+      successRate: 94.2,
+      topTemplates: [
+        { name: "YouTube Modern", uses: 1250 },
+        { name: "Gaming Hype", uses: 980 },
+        { name: "Tech Review", uses: 750 },
+      ],
+      revenueByMonth: [
+        { month: "Jan", revenue: 1200 },
+        { month: "Feb", revenue: 1450 },
+        { month: "Mar", revenue: 2100 },
+        { month: "Apr", revenue: 2800 },
+        { month: "May", revenue: 2900 },
+        { month: "Jun", revenue: 2000 },
+      ],
+    };
+  }),
+
+  // Get all users
+  getAllUsers: adminProcedure
+    .input(
+      z.object({
+        limit: z.number().optional().default(50),
+        offset: z.number().optional().default(0),
+        search: z.string().optional(),
+        role: z.enum(["user", "admin"]).optional(),
+        sortBy: z.enum(["createdAt", "credits", "lastSignedIn"]).optional().default("createdAt"),
+      })
+    )
+    .query(async ({ input }) => {
+      // TODO: Implement user listing with filters
+      return {
+        users: [
+          {
+            id: "user_1",
+            name: "John Doe",
+            email: "john@example.com",
+            role: "user",
+            credits: 150,
+            createdAt: new Date(),
+            lastSignedIn: new Date(),
+            totalSpent: 29.97,
+            thumbnailsGenerated: 45,
+          },
+        ],
+        total: 1,
+      };
+    }),
+
+  // Get user details
+  getUserDetails: adminProcedure
+    .input(z.object({ userId: z.string() }))
+    .query(async ({ input }) => {
+      // TODO: Fetch user details
+      return {
+        id: input.userId,
+        name: "John Doe",
+        email: "john@example.com",
+        role: "user",
+        credits: 150,
+        createdAt: new Date(),
+        lastSignedIn: new Date(),
+        totalSpent: 29.97,
+        thumbnailsGenerated: 45,
+        subscriptionStatus: "active",
+        subscriptionPlan: "pro",
+        billingHistory: [
+          {
+            date: new Date(),
+            amount: 9.99,
+            description: "Monthly subscription",
+            status: "paid",
+          },
+        ],
+      };
+    }),
+
+  // Update user role
+  updateUserRole: adminProcedure
+    .input(
+      z.object({
+        userId: z.string(),
+        role: z.enum(["user", "admin"]),
+      })
+    )
+    .mutation(async ({ input }) => {
+      // TODO: Update user role in database
+      return { success: true, role: input.role };
+    }),
+
+  // Adjust user credits
+  adjustUserCredits: adminProcedure
+    .input(
+      z.object({
+        userId: z.string(),
+        amount: z.number(),
+        reason: z.string(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      // TODO: Adjust credits and record transaction
+      return { success: true, newBalance: 150 + input.amount };
+    }),
+
+  // Suspend/unsuspend user
+  toggleUserSuspension: adminProcedure
+    .input(
+      z.object({
+        userId: z.string(),
+        suspended: z.boolean(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      // TODO: Update user suspension status
+      return { success: true, suspended: input.suspended };
+    }),
+
+  // Delete user
+  deleteUser: adminProcedure
+    .input(z.object({ userId: z.string() }))
+    .mutation(async ({ input }) => {
+      // TODO: Soft delete user
+      return { success: true };
+    }),
+
+  // Analytics - User growth
+  getUserGrowth: adminProcedure
+    .input(
+      z.object({
+        period: z.enum(["week", "month", "year"]).optional().default("month"),
+      })
+    )
+    .query(async ({ input }) => {
+      // TODO: Calculate user growth metrics
+      return {
+        period: input.period,
+        data: [
+          { date: "2024-01-01", users: 100, newUsers: 10 },
+          { date: "2024-01-02", users: 112, newUsers: 12 },
+          { date: "2024-01-03", users: 125, newUsers: 13 },
+        ],
+      };
+    }),
+
+  // Analytics - Revenue
+  getRevenueAnalytics: adminProcedure
+    .input(
+      z.object({
+        period: z.enum(["week", "month", "year"]).optional().default("month"),
+      })
+    )
+    .query(async ({ input }) => {
+      // TODO: Calculate revenue metrics
+      return {
+        period: input.period,
+        totalRevenue: 12450.5,
+        averageOrderValue: 45.5,
+        data: [
+          { date: "2024-01-01", revenue: 150, orders: 3 },
+          { date: "2024-01-02", revenue: 180, orders: 4 },
+          { date: "2024-01-03", revenue: 200, orders: 5 },
+        ],
+      };
+    }),
+
+  // Analytics - Usage
+  getUsageAnalytics: adminProcedure
+    .input(
+      z.object({
+        period: z.enum(["week", "month", "year"]).optional().default("month"),
+      })
+    )
+    .query(async ({ input }) => {
+      // TODO: Calculate usage metrics
+      return {
+        period: input.period,
+        totalGenerations: 5420,
+        successRate: 94.2,
+        averageGenerationTime: 8.5,
+        data: [
+          { date: "2024-01-01", generations: 120, successful: 113 },
+          { date: "2024-01-02", generations: 145, successful: 137 },
+          { date: "2024-01-03", generations: 165, successful: 155 },
+        ],
+      };
+    }),
+
+  // System health
+  getSystemHealth: adminProcedure.query(async () => {
+    // TODO: Check actual system health
+    return {
+      status: "healthy",
+      database: {
+        status: "connected",
+        responseTime: 2.5,
+      },
+      imageGeneration: {
+        status: "operational",
+        averageTime: 8.5,
+        successRate: 94.2,
+      },
+      llm: {
+        status: "operational",
+        averageTime: 1.2,
+        successRate: 99.8,
+      },
+      storage: {
+        status: "operational",
+        usedSpace: 125.5, // GB
+        totalSpace: 1000, // GB
+      },
+    };
+  }),
+
+  // Template management
+  getTemplates: adminProcedure
+    .input(
+      z.object({
+        limit: z.number().optional().default(50),
+        offset: z.number().optional().default(0),
+      })
+    )
+    .query(async () => {
+      // TODO: Fetch templates
+      return {
+        templates: [
+          {
+            id: "template_1",
+            name: "YouTube Modern",
+            category: "youtube",
+            uses: 1250,
+            rating: 4.8,
+            isPublic: true,
+          },
+        ],
+        total: 1,
+      };
+    }),
+
+  // Create template
+  createTemplate: adminProcedure
+    .input(
+      z.object({
+        name: z.string(),
+        description: z.string(),
+        category: z.string(),
+        imageUrl: z.string(),
+        config: z.record(z.string(), z.unknown()),
+      })
+    )
+    .mutation(async ({ input }) => {
+      // TODO: Create template
+      return {
+        id: `template_${Date.now()}`,
+        ...input,
+      };
+    }),
+
+  // Update template
+  updateTemplate: adminProcedure
+    .input(
+      z.object({
+        templateId: z.string(),
+        name: z.string().optional(),
+        description: z.string().optional(),
+        category: z.string().optional(),
+        isPublic: z.boolean().optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      // TODO: Update template
+      return { success: true };
+    }),
+
+  // Delete template
+  deleteTemplate: adminProcedure
+    .input(z.object({ templateId: z.string() }))
+    .mutation(async ({ input }) => {
+      // TODO: Delete template
+      return { success: true };
+    }),
+
+  // Get system logs
+  getSystemLogs: adminProcedure
+    .input(
+      z.object({
+        level: z.enum(["info", "warning", "error"]).optional().default("info"),
+        limit: z.number().optional().default(100),
+        offset: z.number().optional().default(0),
+      })
+    )
+    .query(async ({ input }) => {
+      // TODO: Fetch system logs
+      return {
+        logs: [
+          {
+            id: "log_1",
+            timestamp: new Date(),
+            level: "info",
+            message: "User signed in",
+            userId: "user_1",
+          },
+        ],
+        total: 1,
+      };
+    }),
+
+  // Send announcement
+  sendAnnouncement: adminProcedure
+    .input(
+      z.object({
+        title: z.string(),
+        message: z.string(),
+        targetUsers: z.enum(["all", "free", "pro", "enterprise"]).optional().default("all"),
+      })
+    )
+    .mutation(async ({ input }) => {
+      // TODO: Send announcement to users
+      return { success: true, sentTo: 1250 };
+    }),
+});
+
+export type AdminRouter = typeof adminRouter;
+
