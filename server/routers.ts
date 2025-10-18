@@ -22,7 +22,7 @@ import { invokeLLM } from "./_core/llm";
 import { generateImage } from "./_core/imageGeneration";
 import { storagePut, storageGet } from "./storage";
 import { paymentRouter } from "./payment";
-import { adminRouter } from "./admin";
+import { adminRouter } from "./admin.router";
 
 export const appRouter = router({
   system: systemRouter,

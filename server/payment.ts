@@ -6,6 +6,7 @@ import {
   recordCreditTransaction,
 } from "./db";
 import { handleStripeWebhook } from "./webhooks";
+import { createCreditCheckoutSession, createSubscriptionCheckoutSession, getCheckoutSession, cancelStripeSubscription, verifyWebhookSignature, handlePaymentSuccess, handleSubscriptionUpdated, handleSubscriptionDeleted } from "./stripe.service";
 
 /**
  * Payment and Subscription Router
@@ -42,13 +43,15 @@ export const subscriptionPlans = {
     monthlyCredits: 50,
     price: 0,
     features: ["50 credits/month", "Basic templates", "Chat support"],
+    stripePriceId: undefined,
   },
   pro: {
     id: "pro",
     name: "Pro",
     monthlyCredits: 500,
-    price: 9.99,
+    price: 19.99,
     features: ["500 credits/month", "All templates", "Priority support"],
+    stripePriceId: process.env.STRIPE_PRICE_PRO,
   },
   enterprise: {
     id: "enterprise",
@@ -56,6 +59,7 @@ export const subscriptionPlans = {
     monthlyCredits: null, // Unlimited
     price: 99.99,
     features: ["Unlimited credits", "Custom templates", "Dedicated support"],
+    stripePriceId: process.env.STRIPE_PRICE_ENTERPRISE,
   },
 };
 
@@ -63,11 +67,33 @@ export const paymentRouter = router({
   // Handle Stripe webhook
   handleWebhook: publicProcedure
     .input(z.object({
-      event: z.any(),
+      body: z.string(),
+      signature: z.string(),
     }))
     .mutation(async ({ input }) => {
       try {
-        await handleStripeWebhook(input.event);
+        const event = verifyWebhookSignature(
+          input.body,
+          input.signature,
+          process.env.STRIPE_WEBHOOK_SECRET || ""
+        );
+
+        if (!event) {
+          throw new Error("Invalid webhook signature");
+        }
+
+        switch (event.type) {
+          case "checkout.session.completed":
+            await handlePaymentSuccess(event);
+            break;
+          case "customer.subscription.updated":
+            await handleSubscriptionUpdated(event);
+            break;
+          case "customer.subscription.deleted":
+            await handleSubscriptionDeleted(event);
+            break;
+        }
+
         return { success: true };
       } catch (error) {
         console.error("Webhook processing error:", error);
@@ -76,12 +102,12 @@ export const paymentRouter = router({
     }),
 
   // Get available credit packages
-  getCreditPackages: protectedProcedure.query(async () => {
+  getCreditPackages: publicProcedure.query(async () => {
     return Object.values(creditPackages);
   }),
 
   // Get subscription plans
-  getSubscriptionPlans: protectedProcedure.query(async () => {
+  getSubscriptionPlans: publicProcedure.query(async () => {
     return Object.values(subscriptionPlans);
   }),
 
@@ -90,8 +116,6 @@ export const paymentRouter = router({
     .input(
       z.object({
         packageId: z.enum(["starter", "pro", "enterprise"]),
-        successUrl: z.string().url(),
-        cancelUrl: z.string().url(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -101,12 +125,16 @@ export const paymentRouter = router({
       const creditPackage = creditPackages[input.packageId];
       if (!creditPackage) throw new Error("Invalid package");
 
-      // TODO: Integrate with Stripe API
-      // For now, return mock session
-      return {
-        sessionId: `session_${Date.now()}`,
-        url: `https://checkout.stripe.com/pay/session_${Date.now()}`,
-      };
+      // Create Stripe checkout session
+      const session = await createCreditCheckoutSession(
+        ctx.user.id,
+        input.packageId,
+        creditPackage.credits,
+        creditPackage.price,
+        user.email || ""
+      );
+
+      return session;
     }),
 
   // Create Stripe checkout session for subscription
@@ -114,23 +142,45 @@ export const paymentRouter = router({
     .input(
       z.object({
         planId: z.enum(["free", "pro", "enterprise"]),
-        successUrl: z.string().url(),
-        cancelUrl: z.string().url(),
       })
     )
     .mutation(async ({ ctx, input }) => {
       const user = await getUser(ctx.user.id);
       if (!user) throw new Error("User not found");
 
-      const plan = subscriptionPlans[input.planId];
+      const plan = subscriptionPlans[input.planId as keyof typeof subscriptionPlans];
       if (!plan) throw new Error("Invalid plan");
 
-      // TODO: Integrate with Stripe API
-      // For now, return mock session
-      return {
-        sessionId: `sub_session_${Date.now()}`,
-        url: `https://checkout.stripe.com/pay/sub_session_${Date.now()}`,
-      };
+      if (!plan.stripePriceId && input.planId !== 'free') {
+        throw new Error("Subscription plan not configured for Stripe");
+      }
+
+      // Create Stripe subscription checkout session
+      const session = await createSubscriptionCheckoutSession(
+        ctx.user.id,
+        input.planId,
+        plan.stripePriceId || "",
+        user.email || ""
+      );
+
+      return session;
+    }),
+
+  // Get checkout session details
+  getCheckoutSessionDetails: protectedProcedure
+    .input(z.object({ sessionId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      try {
+        const session = await getCheckoutSession(input.sessionId);
+        return {
+          id: session.id,
+          status: session.payment_status,
+          amountTotal: session.amount_total ? session.amount_total / 100 : 0,
+          metadata: session.metadata,
+        };
+      } catch (error) {
+        throw new Error("Failed to retrieve checkout session");
+      }
     }),
 
   // Handle successful payment (webhook)
@@ -138,60 +188,26 @@ export const paymentRouter = router({
     .input(
       z.object({
         sessionId: z.string(),
-        packageId: z.string().optional(),
-        planId: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
       const user = await getUser(ctx.user.id);
       if (!user) throw new Error("User not found");
 
-      // Handle credit package purchase
-      if (input.packageId) {
-        const creditPackage = creditPackages[input.packageId as keyof typeof creditPackages];
-        if (!creditPackage) throw new Error("Invalid package");
-
-        const newBalance = user.credits + creditPackage.credits;
-        await updateUserCredits(ctx.user.id, newBalance);
-        await recordCreditTransaction(
-          ctx.user.id,
-          creditPackage.credits,
-          "purchase",
-          `Purchased ${creditPackage.credits} credits (${creditPackage.description})`
-        );
+      try {
+        const session = await getCheckoutSession(input.sessionId);
+        
+        if (session.payment_status !== "paid") {
+          throw new Error("Payment not completed");
+        }
 
         return {
           success: true,
-          newBalance,
-          creditsAdded: creditPackage.credits,
+          message: "Payment processed successfully",
         };
+      } catch (error) {
+        throw new Error("Failed to process payment");
       }
-
-      // Handle subscription purchase
-      if (input.planId) {
-        const plan = subscriptionPlans[input.planId as keyof typeof subscriptionPlans];
-        if (!plan) throw new Error("Invalid plan");
-
-        // TODO: Update user subscription in database
-        // For now, add initial credits
-        const initialCredits = plan.monthlyCredits || 500;
-        const newBalance = user.credits + initialCredits;
-        await updateUserCredits(ctx.user.id, newBalance);
-        await recordCreditTransaction(
-          ctx.user.id,
-          initialCredits,
-          "purchase",
-          `Subscribed to ${plan.name} plan`
-        );
-
-        return {
-          success: true,
-          newBalance,
-          plan: plan.name,
-        };
-      }
-
-      throw new Error("No package or plan specified");
     }),
 
   // Get user's billing history
@@ -203,7 +219,7 @@ export const paymentRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      // TODO: Implement billing history query
+      // TODO: Implement billing history query from database
       // Return mock data for now
       return {
         transactions: [
@@ -238,20 +254,27 @@ export const paymentRouter = router({
   }),
 
   // Cancel subscription
-  cancelSubscription: protectedProcedure.mutation(async ({ ctx }) => {
-    const user = await getUser(ctx.user.id);
-    if (!user) throw new Error("User not found");
+  cancelSubscription: protectedProcedure
+    .input(z.object({ subscriptionId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const user = await getUser(ctx.user.id);
+      if (!user) throw new Error("User not found");
 
-    // TODO: Cancel subscription in Stripe
-    await recordCreditTransaction(
-      ctx.user.id,
-      0,
-      "usage",
-      "Subscription cancelled"
-    );
+      try {
+        await cancelStripeSubscription(input.subscriptionId);
+        
+        await recordCreditTransaction(
+          ctx.user.id,
+          0,
+          "usage",
+          "Subscription cancelled"
+        );
 
-    return { success: true };
-  }),
+        return { success: true };
+      } catch (error) {
+        throw new Error("Failed to cancel subscription");
+      }
+    }),
 
   // Update payment method
   updatePaymentMethod: protectedProcedure
@@ -262,6 +285,7 @@ export const paymentRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       // TODO: Update payment method in Stripe
+      // This would involve attaching the payment method to the customer
       return { success: true };
     }),
 
@@ -331,6 +355,43 @@ export const paymentRouter = router({
       const { generateInvoice } = await import("./invoiceGenerator");
       return await generateInvoice(ctx.user.id, input.items, input.paymentMethod);
     }),
+
+  // Apply coupon code
+  applyCoupon: protectedProcedure
+    .input(z.object({ couponCode: z.string(), originalPrice: z.number().positive() }))
+    .mutation(async ({ ctx, input }) => {
+      const { applyCoupon } = await import("./coupon.service");
+      return await applyCoupon(input.couponCode, input.originalPrice);
+    }),
+
+  // Get referral link
+  getReferralLink: protectedProcedure.query(async ({ ctx }) => {
+    const { getReferralInfo } = await import("./referral.service");
+    return await getReferralInfo(ctx.user.id);
+  }),
+
+  // Track referral when user signs up
+  trackReferral: publicProcedure
+    .input(z.object({ referredUserId: z.string(), referralCode: z.string() }))
+    .mutation(async ({ input }) => {
+      const { trackReferral } = await import("./referral.service");
+      const success = await trackReferral(input.referredUserId, input.referralCode);
+      return { success, message: success ? "Referral tracked" : "Failed to track referral" };
+    }),
+
+  // Get referral statistics
+  getReferralStats: protectedProcedure.query(async ({ ctx }) => {
+    const { getReferralStats } = await import("./referral.service");
+    return await getReferralStats(ctx.user.id);
+  }),
+
+  // Validate coupon
+  validateCoupon: publicProcedure
+    .input(z.object({ couponCode: z.string() }))
+    .query(async ({ input }) => {
+      const { validateCoupon } = await import("./coupon.service");
+      return await validateCoupon(input.couponCode);
+    })
 });
 
 export type PaymentRouter = typeof paymentRouter;
