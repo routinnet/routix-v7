@@ -299,6 +299,38 @@ export const paymentRouter = router({
         url: `/invoices/${input.invoiceId}.pdf`,
       };
     }),
+
+  // Calculate tax
+  calculateTax: protectedProcedure
+    .input(
+      z.object({
+        amount: z.number().positive(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const { calculateTax } = await import("./invoiceGenerator");
+      return await calculateTax(ctx.user.id, input.amount);
+    }),
+
+  // Generate invoice
+  generateInvoice: protectedProcedure
+    .input(
+      z.object({
+        items: z.array(
+          z.object({
+            description: z.string(),
+            quantity: z.number().positive(),
+            unitPrice: z.number().positive(),
+            total: z.number().positive(),
+          })
+        ),
+        paymentMethod: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { generateInvoice } = await import("./invoiceGenerator");
+      return await generateInvoice(ctx.user.id, input.items, input.paymentMethod);
+    }),
 });
 
 export type PaymentRouter = typeof paymentRouter;

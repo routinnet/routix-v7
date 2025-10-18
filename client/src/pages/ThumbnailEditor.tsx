@@ -51,7 +51,7 @@ export default function ThumbnailEditor() {
     scale: 100,
   });
 
-  const { data: thumbnail } = trpc.thumbnail.getStatus.useQuery({
+  const { data: thumbnail } = trpc.thumbnail.get.useQuery({
     thumbnailId: thumbnailId,
   });
 

@@ -15,6 +15,13 @@
       "when": 1760752007475,
       "tag": "0001_cool_stryfe",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1760760710409,
+      "tag": "0002_fat_leopardon",
+      "breakpoints": true
     }
   ]
 }

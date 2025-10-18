@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +18,7 @@ import {
   Zap,
   MessageCircle,
   X,
+  CreditCard,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ModelSelector } from "@/components/ModelSelector";
@@ -41,6 +43,7 @@ interface Message {
  */
 export default function Dashboard() {
   const { user, logout } = useAuth();
+  const [location, navigate] = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
@@ -251,6 +254,14 @@ export default function Dashboard() {
           <Button variant="outline" className="w-full gap-2 justify-start">
             <Settings className="w-4 h-4" />
             Settings
+          </Button>
+          <Button
+            variant="outline"
+            className="w-full gap-2 justify-start"
+            onClick={() => navigate("/billing")}
+          >
+            <CreditCard className="w-4 h-4" />
+            Billing
           </Button>
           <Button
             variant="outline"

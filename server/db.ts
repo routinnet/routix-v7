@@ -397,3 +397,12 @@ export async function updateUserRole(
   await db.update(users).set({ role }).where(eq(users.id, userId));
 }
 
+
+
+export async function getThumbnailById(thumbnailId: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+
+  return db.select().from(thumbnails).where(eq(thumbnails.id, thumbnailId)).limit(1).then(res => res[0]);
+}
+
