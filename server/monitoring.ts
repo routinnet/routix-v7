@@ -1,4 +1,24 @@
-// Monitoring and Error Tracking Service
+import * as Sentry from '@sentry/node';
+import { config } from './config';
+
+/**
+ * Initialize Sentry for error tracking and monitoring
+ */
+export function initializeMonitoring() {
+  if (!config.sentry.enabled || !config.sentry.dsn) {
+    console.log('⚠️ Sentry error tracking disabled');
+    return;
+  }
+
+  Sentry.init({
+    dsn: config.sentry.dsn,
+    environment: config.sentry.environment,
+    tracesSampleRate: config.isProduction ? 0.1 : 1.0,
+  });
+
+  console.log('✅ Sentry monitoring initialized');
+}
+
 export interface ErrorLog {
   id: string;
   timestamp: Date;
@@ -18,6 +38,37 @@ export interface PerformanceMetric {
 
 const errorLogs: ErrorLog[] = [];
 const performanceMetrics: PerformanceMetric[] = [];
+
+/**
+ * Capture exception with Sentry
+ */
+export function captureException(error: Error, context?: Record<string, any>) {
+  if (Sentry.isInitialized?.()) {
+    Sentry.captureException(error, {
+      contexts: {
+        custom: context,
+      },
+    });
+  }
+  console.error('❌ Error:', error.message, context);
+}
+
+/**
+ * Add breadcrumb for debugging
+ */
+export function addBreadcrumb(
+  message: string,
+  data?: Record<string, any>,
+  category?: string
+) {
+  if (Sentry.isInitialized?.()) {
+    Sentry.addBreadcrumb({
+      message,
+      data,
+      category: category || 'custom',
+    });
+  }
+}
 
 export async function logError(
   message: string,
